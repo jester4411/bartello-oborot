@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bartello — Отчёт по обороту</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Bartello — Отчёт по обороту</h1>
+            <p class="subtitle">Загрузите месячный отчёт из админки Bartello для формирования сводной таблицы</p>
+        </header>
+
+        <div id="dropZone" class="drop-zone">
+            <div class="drop-zone__content">
+                <svg class="drop-zone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <p>Перетащите CSV-файл сюда</p>
+                <p class="drop-zone__hint">или</p>
+                <label class="drop-zone__button">
+                    Выберите файл
+                    <input type="file" id="fileInput" accept=".csv" hidden>
+                </label>
+            </div>
+        </div>
+
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Обработка файла...</p>
+        </div>
+
+        <div id="error" class="error hidden"></div>
+
+        <div id="results" class="results hidden">
+            <div class="results__header">
+                <h2 id="resultsTitle">Результат</h2>
+                <button id="downloadBtn" class="btn-download">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Скачать Excel
+                </button>
+            </div>
+            <div class="table-wrapper">
+                <table id="resultTable">
+                    <thead>
+                        <tr>
+                            <th>Название заведения</th>
+                            <th>ЮРЛИЦО</th>
+                            <th>ИНН</th>
+                            <th class="num">Оборот</th>
+                            <th class="num">Возвраты</th>
+                            <th class="num">Оборот после возвратов</th>
+                            <th class="num">Комиссия Бартелло</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
