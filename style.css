@@ -222,3 +222,48 @@ tr.row-sub {
 .hidden {
     display: none;
 }
+
+/* Заказы через Бартелло Лайт — своя ставка комиссии, показываем отдельно */
+.row-light td {
+    color: #7c3aed;
+}
+
+.light-summary {
+    margin-bottom: 16px;
+    padding: 14px 16px;
+    border: 1px solid #ddd6fe;
+    border-left: 3px solid #7c3aed;
+    border-radius: 8px;
+    background: #f5f3ff;
+}
+
+.light-summary h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #5b21b6;
+}
+
+.light-summary ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 4px;
+}
+
+.light-summary li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 13px;
+    color: #4c1d95;
+}
+
+.light-summary__venue {
+    font-weight: 600;
+}
+
+.light-summary__meta {
+    color: #6d28d9;
+}

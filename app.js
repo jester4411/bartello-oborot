@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultBody = document.getElementById('resultBody');
     const resultsTitle = document.getElementById('resultsTitle');
     const downloadBtn = document.getElementById('downloadBtn');
+    const lightSummary = document.getElementById('lightSummary');
 
     let currentData = null;
 
@@ -154,16 +155,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function aggregate(rows) {
         const venues = []; // Final ordered list of venue blocks
+        const lightTotals = []; // Заказы через Бартелло Лайт — по заведениям
         let currentVenue = null;
         let ordersByPayment = {};
+
+        // Способ оплаты + признак Бартелло Лайт → подпись строки
+        function groupLabel(pmKey, isLight) {
+            const base = pmKey === 'Card' ? 'К' : pmKey === 'SbpPay' ? 'SBP' : 'QR';
+            return isLight ? base + ' Лайт' : base;
+        }
 
         function finalizeVenue() {
             if (!currentVenue) return;
 
-            const methods = Object.keys(ordersByPayment);
-            const hasMultipleMethods = methods.length > 1;
+            const keys = Object.keys(ordersByPayment);
+            const hasMultipleGroups = keys.length > 1;
 
-            if (hasMultipleMethods) {
+            if (hasMultipleGroups) {
                 // "общая" row with empty commission
                 venues.push({
                     type: 'total',
@@ -176,40 +184,58 @@ document.addEventListener('DOMContentLoaded', () => {
                     commission: null
                 });
 
-                // Sub-rows for each payment method
+                // Порядок строк: сначала обычные заказы способа оплаты, следом — Лайт
                 const methodOrder = ['Card', 'SbpPay'];
-                // Add any other methods (QR etc)
-                for (const m of methods) {
-                    if (!methodOrder.includes(m)) methodOrder.push(m);
+                for (const key of keys) {
+                    const pm = ordersByPayment[key].pmKey;
+                    if (!methodOrder.includes(pm)) methodOrder.push(pm);
                 }
 
                 for (const method of methodOrder) {
-                    if (!ordersByPayment[method]) continue;
-                    const data = ordersByPayment[method];
-                    const label = method === 'Card' ? 'К' :
-                                  method === 'SbpPay' ? 'SBP' : 'QR';
-                    venues.push({
-                        type: 'sub',
-                        name: currentVenue.name + ' ' + label,
-                        legal: '',
-                        inn: '',
-                        revenue: data.revenue,
-                        returns: data.returns,
-                        afterReturns: data.revenue - data.returns,
-                        commission: data.commission
-                    });
+                    for (const isLight of [false, true]) {
+                        const key = method + '|' + (isLight ? 'light' : 'main');
+                        const data = ordersByPayment[key];
+                        if (!data) continue;
+                        venues.push({
+                            type: 'sub',
+                            isLight: isLight,
+                            name: currentVenue.name + ' ' + groupLabel(method, isLight),
+                            legal: '',
+                            inn: '',
+                            revenue: data.revenue,
+                            returns: data.returns,
+                            afterReturns: data.revenue - data.returns,
+                            commission: data.commission
+                        });
+                    }
                 }
             } else {
-                // Single payment method — one row
+                // Один способ оплаты — одна строка (у «лайтовых» заведений помечаем её)
+                const onlyLight = keys.length === 1 && ordersByPayment[keys[0]].isLight;
                 venues.push({
                     type: 'single',
-                    name: currentVenue.name,
+                    isLight: onlyLight,
+                    name: currentVenue.name + (onlyLight ? ' Лайт' : ''),
                     legal: currentVenue.legal,
                     inn: currentVenue.inn,
                     revenue: currentVenue.revenue,
                     returns: currentVenue.returns,
                     afterReturns: currentVenue.afterReturns,
                     commission: currentVenue.commission
+                });
+            }
+
+            // Итоги по Лайту для сводки над таблицей
+            for (const key of keys) {
+                const data = ordersByPayment[key];
+                if (!data.isLight) continue;
+                lightTotals.push({
+                    venue: currentVenue.name,
+                    label: groupLabel(data.pmKey, true),
+                    orders: data.orders,
+                    revenue: data.revenue,
+                    afterReturns: data.revenue - data.returns,
+                    commission: data.commission
                 });
             }
         }
@@ -270,13 +296,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     pmKey = 'QR'; // Group all other methods as QR
                 }
 
-                if (!ordersByPayment[pmKey]) {
-                    ordersByPayment[pmKey] = { revenue: 0, returns: 0, commission: 0 };
+                // Колонка «Заказ из приложения»: у Лайта своя ставка комиссии,
+                // поэтому такие заказы считаем отдельной строкой
+                const appName = (row[12] || '').trim().toLowerCase();
+                const isLight = appName.includes('лайт');
+
+                const key = pmKey + '|' + (isLight ? 'light' : 'main');
+                if (!ordersByPayment[key]) {
+                    ordersByPayment[key] = { pmKey: pmKey, isLight: isLight, orders: 0, revenue: 0, returns: 0, commission: 0 };
                 }
 
-                ordersByPayment[pmKey].revenue += parseNum(row[3]);
-                ordersByPayment[pmKey].returns += parseNum(row[7]);
-                ordersByPayment[pmKey].commission += parseNum(row[15]);
+                ordersByPayment[key].orders += 1;
+                ordersByPayment[key].revenue += parseNum(row[3]);
+                ordersByPayment[key].returns += parseNum(row[7]);
+                ordersByPayment[key].commission += parseNum(row[15]);
             }
         }
 
@@ -292,7 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        return { venues, month };
+        return { venues, lightTotals, month };
     }
 
     function formatNumber(n) {
@@ -305,7 +338,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderTable(data) {
-        const { venues, month } = data;
+        const { venues, lightTotals, month } = data;
 
         if (month) {
             const [y, m] = month.split('-');
@@ -313,6 +346,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
             resultsTitle.textContent = `Результат — ${monthNames[parseInt(m)]} ${y}`;
         }
+
+        renderLightSummary(lightTotals);
 
         resultBody.innerHTML = '';
 
@@ -323,6 +358,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 tr.className = 'row-total';
             } else if (v.type === 'sub') {
                 tr.className = 'row-sub';
+            }
+            if (v.isLight) {
+                tr.className = (tr.className ? tr.className + ' ' : '') + 'row-light';
             }
 
             tr.innerHTML = `
@@ -339,6 +377,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Сводка «у кого есть Бартелло Лайт» и сколько он дал оборота/комиссии
+    function renderLightSummary(lightTotals) {
+        if (!lightSummary) return;
+
+        if (!lightTotals || lightTotals.length === 0) {
+            lightSummary.classList.add('hidden');
+            lightSummary.innerHTML = '';
+            return;
+        }
+
+        const orders = lightTotals.reduce((acc, t) => acc + t.orders, 0);
+        const afterReturns = lightTotals.reduce((acc, t) => acc + t.afterReturns, 0);
+        const commission = lightTotals.reduce((acc, t) => acc + t.commission, 0);
+        const venuesCount = new Set(lightTotals.map((t) => t.venue)).size;
+
+        const items = lightTotals
+            .slice()
+            .sort((a, b) => b.afterReturns - a.afterReturns)
+            .map((t) => `<li><span class="light-summary__venue">${escapeHtml(t.venue)}</span>
+                <span class="light-summary__meta">${escapeHtml(t.label)} · ${t.orders} зак. ·
+                оборот ${formatNumber(t.afterReturns)} · комиссия ${formatNumber(t.commission)}</span></li>`)
+            .join('');
+
+        lightSummary.innerHTML = `
+            <h3>Бартелло Лайт — ${venuesCount} завед., ${orders} зак.,
+                оборот ${formatNumber(afterReturns)}, комиссия ${formatNumber(commission)}</h3>
+            <ul>${items}</ul>`;
+        lightSummary.classList.remove('hidden');
+    }
+
     function escapeHtml(str) {
         if (!str) return '';
         const div = document.createElement('div');
@@ -349,7 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function downloadExcel() {
         if (!currentData) return;
 
-        const { venues, month } = currentData;
+        const { venues, lightTotals, month } = currentData;
 
         const wsData = [
             ['Название заведения', 'ЮРЛИЦО', 'ИНН', 'Оборот', 'Возвраты', 'Оборот после возвратов', 'Комиссия Бартелло']
@@ -382,6 +450,19 @@ document.addEventListener('DOMContentLoaded', () => {
         ];
 
         XLSX.utils.book_append_sheet(wb, ws, 'Оборот');
+
+        // Отдельный лист по Бартелло Лайт — чтобы не искать строки глазами
+        if (lightTotals && lightTotals.length > 0) {
+            const lightData = [
+                ['Название заведения', 'Способ оплаты', 'Заказов', 'Оборот', 'Оборот после возвратов', 'Комиссия Бартелло']
+            ];
+            for (const t of lightTotals) {
+                lightData.push([t.venue, t.label, t.orders, t.revenue, t.afterReturns, t.commission]);
+            }
+            const wsLight = XLSX.utils.aoa_to_sheet(lightData);
+            wsLight['!cols'] = [{ wch: 50 }, { wch: 14 }, { wch: 10 }, { wch: 18 }, { wch: 22 }, { wch: 20 }];
+            XLSX.utils.book_append_sheet(wb, wsLight, 'Лайт');
+        }
 
         const filename = month ? `Bartello_оборот_${month}.xlsx` : 'Bartello_оборот.xlsx';
         XLSX.writeFile(wb, filename);
