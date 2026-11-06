@@ -158,11 +158,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const lightTotals = []; // Заказы через Бартелло Лайт — по заведениям
         let currentVenue = null;
         let ordersByPayment = {};
+        // Индексы колонок сервисного сбора берём из шапки заказов по названию;
+        // если в файле таких колонок нет, ячейки остаются пустыми
+        let feeOrderCol = -1;
+        let feeTipCol = -1;
 
         // Способ оплаты + признак Бартелло Лайт → подпись строки
         function groupLabel(pmKey, isLight) {
             const base = pmKey === 'Card' ? 'К' : pmKey === 'SbpPay' ? 'SBP' : 'QR';
             return isLight ? base + ' Лайт' : base;
+        }
+
+        // Сумма копится из копеек с плавающей точкой: округляем до 2 знаков.
+        // Нет колонки в файле — пустая ячейка, а не ноль
+        function feeValue(sum) {
+            if (feeOrderCol < 0 && feeTipCol < 0) return null;
+            return Math.round(sum * 100) / 100;
         }
 
         function finalizeVenue() {
@@ -181,7 +192,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     revenue: currentVenue.revenue,
                     returns: currentVenue.returns,
                     afterReturns: currentVenue.afterReturns,
-                    commission: null
+                    commission: null,
+                    feeOrder: null,
+                    feeTip: null
                 });
 
                 // Порядок строк: сначала обычные заказы способа оплаты, следом — Лайт
@@ -205,13 +218,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             revenue: data.revenue,
                             returns: data.returns,
                             afterReturns: data.revenue - data.returns,
-                            commission: data.commission
+                            commission: data.commission,
+                            feeOrder: feeValue(data.feeOrder),
+                            feeTip: feeValue(data.feeTip)
                         });
                     }
                 }
             } else {
                 // Один способ оплаты — одна строка (у «лайтовых» заведений помечаем её)
                 const onlyLight = keys.length === 1 && ordersByPayment[keys[0]].isLight;
+                const only = keys.length === 1 ? ordersByPayment[keys[0]] : null;
                 venues.push({
                     type: 'single',
                     isLight: onlyLight,
@@ -221,7 +237,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     revenue: currentVenue.revenue,
                     returns: currentVenue.returns,
                     afterReturns: currentVenue.afterReturns,
-                    commission: currentVenue.commission
+                    commission: currentVenue.commission,
+                    feeOrder: feeValue(only ? only.feeOrder : 0),
+                    feeTip: feeValue(only ? only.feeTip : 0)
                 });
             }
 
@@ -249,8 +267,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const col2 = (row[2] || '').trim();
             const col3 = (row[3] || '').trim();
 
-            // Skip column header rows
-            if (col0 === 'Дата') continue;
+            // Шапка заказов: запоминаем, где лежит сервисный сбор
+            if (col0 === 'Дата') {
+                const headers = row.map((h) => (h || '').trim().toLowerCase());
+                feeOrderCol = headers.indexOf('сервисный сбор за заказ');
+                feeTipCol = headers.indexOf('сервисный сбор за чаевые');
+                continue;
+            }
 
             // Skip empty rows
             if (!col0 && !col1 && !col2 && !col3) continue;
@@ -303,13 +326,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const key = pmKey + '|' + (isLight ? 'light' : 'main');
                 if (!ordersByPayment[key]) {
-                    ordersByPayment[key] = { pmKey: pmKey, isLight: isLight, orders: 0, revenue: 0, returns: 0, commission: 0 };
+                    ordersByPayment[key] = { pmKey: pmKey, isLight: isLight, orders: 0, revenue: 0, returns: 0, commission: 0, feeOrder: 0, feeTip: 0 };
                 }
 
                 ordersByPayment[key].orders += 1;
                 ordersByPayment[key].revenue += parseNum(row[3]);
                 ordersByPayment[key].returns += parseNum(row[7]);
                 ordersByPayment[key].commission += parseNum(row[15]);
+                if (feeOrderCol >= 0) ordersByPayment[key].feeOrder += parseNum(row[feeOrderCol]);
+                if (feeTipCol >= 0) ordersByPayment[key].feeTip += parseNum(row[feeTipCol]);
             }
         }
 
@@ -371,6 +396,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="num">${formatNumber(v.returns)}</td>
                 <td class="num">${formatNumber(v.afterReturns)}</td>
                 <td class="num">${v.commission !== null ? formatNumber(v.commission) : ''}</td>
+                <td class="num">${formatNumber(v.feeOrder)}</td>
+                <td class="num">${formatNumber(v.feeTip)}</td>
             `;
 
             resultBody.appendChild(tr);
@@ -420,7 +447,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const { venues, lightTotals, month } = currentData;
 
         const wsData = [
-            ['Название заведения', 'ЮРЛИЦО', 'ИНН', 'Оборот', 'Возвраты', 'Оборот после возвратов', 'Комиссия Бартелло']
+            ['Название заведения', 'ЮРЛИЦО', 'ИНН', 'Оборот', 'Возвраты', 'Оборот после возвратов', 'Комиссия Бартелло',
+                'Сервисный сбор за заказ', 'Сервисный сбор за чаевые']
         ];
 
         for (const v of venues) {
@@ -431,7 +459,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 v.revenue || '',
                 v.returns || '',
                 v.afterReturns || '',
-                v.commission !== null ? (v.commission || '') : ''
+                v.commission !== null ? (v.commission || '') : '',
+                v.feeOrder || '',
+                v.feeTip || ''
             ]);
         }
 
@@ -447,6 +477,8 @@ document.addEventListener('DOMContentLoaded', () => {
             { wch: 15 }, // Returns
             { wch: 22 }, // After returns
             { wch: 20 }, // Commission
+            { wch: 24 }, // Сервисный сбор за заказ
+            { wch: 24 }, // Сервисный сбор за чаевые
         ];
 
         XLSX.utils.book_append_sheet(wb, ws, 'Оборот');

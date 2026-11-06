@@ -12,7 +12,7 @@ body {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
     padding: 40px 20px;
 }
@@ -181,8 +181,11 @@ thead th {
     top: 0;
 }
 
+/* Денежных колонок девять: длинные заголовки переносим, чтобы таблица влезала без прокрутки вбок */
 thead th.num {
     text-align: right;
+    white-space: normal;
+    vertical-align: bottom;
 }
 
 tbody td {
